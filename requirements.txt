@@ -1,0 +1,5 @@
+ipdb
+nornir==3.1.1
+nornir_napalm
+nornir_ansible
+nornir_utils
