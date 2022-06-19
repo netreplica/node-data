@@ -10,11 +10,11 @@ from nornir_napalm.plugins.tasks import napalm_get
 
 InventoryPluginRegister.register("inventory", AnsibleInventory)
 
-def task_manages_connection_manually(task, platform, username, password):
+def nornir_connect_and_run(task, action, params, platform, username, password):
   task.host.open_connection("napalm", configuration=task.nornir.config, platform=platform, username=username, password=password)
   r = task.run(
-    task=napalm_get,
-    getters=["facts"]
+    task=action,
+    getters=params
   )
   task.host.close_connection("napalm")
 
@@ -35,7 +35,9 @@ kinds_platforms = {
 for k, v in kinds_platforms.items():
   nr = nr.filter(F(groups__contains=k))
   r = nr.run(
-    task=task_manages_connection_manually,
+    task=nornir_connect_and_run,
+    action=napalm_get,
+    params=["facts"],
     platform=v,
     username=username,
     password=password,
