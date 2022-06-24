@@ -1,4 +1,4 @@
-import ipdb, pprint
+import ipdb, json
 from nornir import InitNornir
 from nornir.core.filter import F
 
@@ -32,20 +32,31 @@ kinds_platforms = {
   'vr-xrv9k': 'iosxr',
 }
 
+node_data = {
+  "name": "",
+  "type": "node-data",
+  "nodes": {},
+}
+
+nodes = {}
+
 for k, v in kinds_platforms.items():
   nr = nr.filter(F(groups__contains=k))
   r = nr.run(
     task=nornir_connect_and_run,
     plugin="napalm",
     action=napalm_get,
-    params=["facts"],
+    params=["facts", "interfaces_ip"],
     platform=v,
     username=username,
     password=password,
   )
   for k, v in r.items():
     if not v[0].failed:
-      print(f"Connection succeeded for: {k}")
-      pprint.pprint(v[1].result)
+      nodes |= {k: v[1].result}
     else:
       print(f"Connection failed for: {k}. Error: {v[0]}")
+
+node_data["nodes"] |= nodes
+
+print(json.dumps(node_data, indent=4, sort_keys=False))
