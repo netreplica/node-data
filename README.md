@@ -17,7 +17,12 @@ git clone <node-data-url>
 source ~/venv/host-data-poc39/bin/activate
 pip3 install -r node-data/requirements.txt
 
-python3 node-data/node_data.py
+Manual CLI run:
+
+cd node-data
+python3 node_data.py <topology>
+
+Run as a Flask app:
 
 cd node-data
 FLASK_APP=node_data flask run --host=0.0.0.0

@@ -1,3 +1,4 @@
+import sys
 from flask import Flask, escape, request
 
 import json
@@ -22,9 +23,7 @@ def nornir_connect_and_run(task, plugin, action, params, platform, username, pas
   )
   task.host.close_connection(plugin)
 
-@app.route('/collect/clab/<topology>/nodes/')
-def get_clab_node_data(topology):
-  t = escape(topology)
+def get_clab_node_data(topology, getters):
   # Initialize Nornir object with Containerlab ansible inventory
   nr = InitNornir(
       runner={
@@ -36,7 +35,7 @@ def get_clab_node_data(topology):
       inventory={
           "plugin": "AnsibleInventory",
           "options": {
-              "hostsfile": f"../clab/clab-{t}/ansible-inventory.yml"
+              "hostsfile": f"../clab/clab-{topology}/ansible-inventory.yml"
           },
       },
   )
@@ -53,7 +52,7 @@ def get_clab_node_data(topology):
   }
 
   node_data = {
-    "name": t,
+    "name": topology,
     "type": "node-data",
     "nodes": {},
   }
@@ -66,7 +65,7 @@ def get_clab_node_data(topology):
       task=nornir_connect_and_run,
       plugin="napalm",
       action=napalm_get,
-      params=["facts", "interfaces_ip"],
+      params=getters,
       platform=v,
       username=username,
       password=password,
@@ -80,3 +79,17 @@ def get_clab_node_data(topology):
   node_data["nodes"] |= nodes
 
   return(node_data)
+
+def main():
+  args = sys.argv[1:]
+  #print(json.dumps(get_clab_node_data(args[0], ["facts", "interfaces_ip"])))
+  print(json.dumps(get_clab_node_data(args[0], ["facts"])))
+
+if __name__ == "__main__":
+    main()
+    
+# Flask URL handler
+@app.route('/collect/clab/<topology>/nodes/')
+def app_clab_node_data(topology):
+  t = escape(topology)
+  return get_clab_node_data(t, ["facts"])
