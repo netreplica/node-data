@@ -22,8 +22,9 @@ def nornir_connect_and_run(task, plugin, action, params, platform, username, pas
   )
   task.host.close_connection(plugin)
 
-@app.route('/clab/<topology>/nodes/')
+@app.route('/collect/clab/<topology>/nodes/')
 def get_clab_node_data(topology):
+  t = escape(topology)
   # Initialize Nornir object with Containerlab ansible inventory
   nr = InitNornir(
       runner={
@@ -35,7 +36,7 @@ def get_clab_node_data(topology):
       inventory={
           "plugin": "AnsibleInventory",
           "options": {
-              "hostsfile": f"../clab/clab-{escape(topology)}/ansible-inventory.yml"
+              "hostsfile": f"../clab/clab-{t}/ansible-inventory.yml"
           },
       },
   )
@@ -52,7 +53,7 @@ def get_clab_node_data(topology):
   }
 
   node_data = {
-    "name": "",
+    "name": t,
     "type": "node-data",
     "nodes": {},
   }

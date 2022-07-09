@@ -17,6 +17,7 @@ git clone <node-data-url>
 source ~/venv/host-data-poc39/bin/activate
 pip3 install -r node-data/requirements.txt
 
-python3 node-data/get_node_data.py
+python3 node-data/node_data.py
+
 cd node-data
 FLASK_APP=node_data flask run --host=0.0.0.0
