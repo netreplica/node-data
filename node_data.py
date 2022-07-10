@@ -72,7 +72,14 @@ def get_clab_node_data(topology, getters):
     )
     for k, v in r.items():
       if not v[0].failed:
-        nodes |= {k: v[1].result}
+        n = {}
+        results = v[1].result
+        for block in results:
+          if block == "facts":
+            n |= results["facts"] # flatten "facts"
+          else:
+            n |= {block: results[block]}
+        nodes |= {k: n}
       else:
         return(f"Connection failed for: {k}. Error: {v[0]}")
 
@@ -82,8 +89,8 @@ def get_clab_node_data(topology, getters):
 
 def main():
   args = sys.argv[1:]
-  #print(json.dumps(get_clab_node_data(args[0], ["facts", "interfaces_ip"])))
-  print(json.dumps(get_clab_node_data(args[0], ["facts"])))
+  print(json.dumps(get_clab_node_data(args[0], ["facts", "interfaces_ip"])))
+  #print(json.dumps(get_clab_node_data(args[0], ["facts"])))
 
 if __name__ == "__main__":
     main()
