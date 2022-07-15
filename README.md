@@ -18,7 +18,7 @@ python3.9 -m venv $PYENV; cd $PYENV; export PYENV_DIR=`pwd`
 source "$PYENV_DIR/bin/activate"
 ```
 
-Clond and initialize venv
+Clone and initialize venv
 ```Shell
 git clone <node-data-url>
 
