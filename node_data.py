@@ -89,7 +89,7 @@ def get_clab_node_data(topology, getters):
 
 def main():
   args = sys.argv[1:]
-  print(json.dumps(get_clab_node_data(args[0], ["facts", "interfaces", "interfaces_ip"])))
+  print(json.dumps(get_clab_node_data(args[0], ["facts", "interfaces", "lldp_neighbors"])))
   #print(json.dumps(get_clab_node_data(args[0], ["facts"])))
 
 if __name__ == "__main__":
@@ -99,4 +99,4 @@ if __name__ == "__main__":
 @app.route('/collect/clab/<topology>/nodes/')
 def app_clab_node_data(topology):
   t = escape(topology)
-  return get_clab_node_data(t, ["facts", "interfaces"])
+  return get_clab_node_data(t, ["facts", "interfaces", "lldp_neighbors"])
