@@ -1,0 +1,16 @@
+# topology documentation: http://containerlab.dev/lab-examples/single-srl/
+name: srl-napalm
+
+topology:
+  kinds:
+    srl:
+      type: ixrd3
+      image: ghcr.io/nokia/srlinux
+  nodes:
+    srl:
+      kind: srl
+    napalm:
+      kind: linux
+      image: napalmautomation/napalm
+      binds:
+        - .:/mnt
