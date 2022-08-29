@@ -9,6 +9,7 @@ topology:
   nodes:
     srl:
       kind: srl
+      startup-config: ../submodules/napalm-srlinux/test/unit/srl/initial.conf
     napalm:
       kind: linux
       image: napalmautomation/napalm

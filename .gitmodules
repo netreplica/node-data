@@ -1,0 +1,3 @@
+[submodule "submodules/napalm-srlinux"]
+	path = submodules/napalm-srlinux
+	url = https://github.com/napalm-automation-community/napalm-srlinux
