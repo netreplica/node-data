@@ -23,9 +23,9 @@ def nornir_connect_and_run(task, plugin, action, params, platform, username, pas
   )
   task.host.close_connection(plugin)
 
-def get_clab_node_data(topology, getters):
+def get_clab_node_data(topology):
   # Initialize Nornir object with Containerlab ansible inventory
-  nr = InitNornir(
+  nrinit = InitNornir(
       runner={
           "plugin": "threaded",
           "options": {
@@ -40,15 +40,23 @@ def get_clab_node_data(topology, getters):
       },
   )
 
-  username="admin"
-  password="admin"
-
   kinds_platforms = {
     'ceos':     'eos',
-    'vr-veos':  'eos',
     'crpd':     'junos', 
-    'vr-vmx':   'junos', 
-    'vr-xrv9k': 'iosxr',
+#    'vr-veos':  'eos',
+#    'vr-vmx':   'junos', 
+#    'vr-xrv9k': 'iosxr',
+  }
+
+  kinds_credentials = {
+    'ceos':     {"username": "admin", "password": "admin"},
+    'crpd':     {"username": "root", "password": "clab123"},
+  }
+
+  kinds_getters = {
+    'ceos':     ["facts", "interfaces", "lldp_neighbors"],
+    #'crpd':     ["config"],
+    'crpd':     [],
   }
 
   node_data = {
@@ -60,15 +68,15 @@ def get_clab_node_data(topology, getters):
   nodes = {}
 
   for k, v in kinds_platforms.items():
-    nr = nr.filter(F(groups__contains=k))
+    nr = nrinit.filter(F(groups__contains=k))
     r = nr.run(
       task=nornir_connect_and_run,
       plugin="napalm",
       action=napalm_get,
-      params=getters,
+      params=kinds_getters[k],
       platform=v,
-      username=username,
-      password=password,
+      username=kinds_credentials[k]["username"],
+      password=kinds_credentials[k]["password"],
     )
     for k, v in r.items():
       if not v[0].failed:
@@ -89,8 +97,7 @@ def get_clab_node_data(topology, getters):
 
 def main():
   args = sys.argv[1:]
-  print(json.dumps(get_clab_node_data(args[0], ["facts", "interfaces", "lldp_neighbors"])))
-  #print(json.dumps(get_clab_node_data(args[0], ["facts"])))
+  print(json.dumps(get_clab_node_data(args[0])))
 
 if __name__ == "__main__":
     main()
@@ -99,4 +106,4 @@ if __name__ == "__main__":
 @app.route('/collect/clab/<topology>/nodes/')
 def app_clab_node_data(topology):
   t = escape(topology)
-  return get_clab_node_data(t, ["facts", "interfaces", "lldp_neighbors"])
+  return get_clab_node_data(t)
