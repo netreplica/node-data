@@ -9,17 +9,28 @@ from nornir.core.plugins.inventory import InventoryPluginRegister
 from nornir_ansible.plugins.inventory.ansible import AnsibleInventory
 
 from nornir_utils.plugins.functions import print_result
-from nornir_napalm.plugins.tasks import napalm_get
+#from nornir_napalm.plugins.tasks import napalm_get
+
+from nornir_netmiko import netmiko_send_command
+#from netmiko import ssh_exception
 
 InventoryPluginRegister.register("inventory", AnsibleInventory)
 
 app = Flask(__name__)
 
-def nornir_connect_and_run(task, plugin, action, params, platform, username, password):
+def nornir_connect_and_run_getters(task, plugin, action, params, platform, username, password):
   task.host.open_connection(plugin, configuration=task.nornir.config, platform=platform, username=username, password=password)
   r = task.run(
     task=action,
     getters=params
+  )
+  task.host.close_connection(plugin)
+
+def nornir_connect_and_run_command(task, plugin, action, params, platform, username, password):
+  task.host.open_connection(plugin, configuration=task.nornir.config, platform=platform, username=username, password=password)
+  r = task.run(
+    task=action,
+    command_string=params
   )
   task.host.close_connection(plugin)
 
@@ -41,8 +52,9 @@ def get_clab_node_data(topology):
   )
 
   kinds_platforms = {
-    'ceos':     'eos',
-    'crpd':     'junos', 
+#    'ceos':     'eos',
+#    'crpd':     'junos', 
+    'linux':     'linux', 
 #    'vr-veos':  'eos',
 #    'vr-vmx':   'junos', 
 #    'vr-xrv9k': 'iosxr',
@@ -51,6 +63,7 @@ def get_clab_node_data(topology):
   kinds_credentials = {
     'ceos':     {"username": "admin", "password": "admin"},
     'crpd':     {"username": "root", "password": "clab123"},
+    'linux':    {"username": "root", "password": "root"},
   }
 
   kinds_getters = {
@@ -70,30 +83,37 @@ def get_clab_node_data(topology):
   for k, v in kinds_platforms.items():
     nr = nrinit.filter(F(groups__contains=k))
     r = nr.run(
-      task=nornir_connect_and_run,
-      plugin="napalm",
-      action=napalm_get,
-      params=kinds_getters[k],
+      #task=nornir_connect_and_run_getters,
+      task=nornir_connect_and_run_command,
+      #plugin="napalm",
+      plugin="netmiko",
+      #action=napalm_get,
+      action=netmiko_send_command,
+      #params=kinds_getters[k],
+      params="ip -json address show",
+      #params="show interfaces",
       platform=v,
       username=kinds_credentials[k]["username"],
       password=kinds_credentials[k]["password"],
     )
     for k, v in r.items():
       if not v[0].failed:
-        n = {}
-        results = v[1].result
-        for block in results:
-          if block == "facts":
-            n |= results["facts"] # flatten "facts"
-          else:
-            n |= {block: results[block]}
-        nodes |= {k: n}
-      else:
-        return(f"Connection failed for: {k}. Error: {v[0]}")
-
-  node_data["nodes"] |= nodes
-
-  return(node_data)
+        print(k)
+        print(v[1])
+#        n = {}
+#        results = v[1].result
+#        for block in results:
+#          if block == "facts":
+#            n |= results["facts"] # flatten "facts"
+#          else:
+#            n |= {block: results[block]}
+#        nodes |= {k: n}
+#      else:
+#        return(f"Connection failed for: {k}. Error: {v[0]}")
+#
+#  node_data["nodes"] |= nodes
+#
+#  return(node_data)
 
 def main():
   args = sys.argv[1:]

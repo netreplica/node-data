@@ -1,5 +1,6 @@
 flask==2.1.2
+netmiko==4.1.2
 nornir==3.1.1
-nornir_napalm
+nornir_netmiko==0.2.0
 nornir_ansible
 nornir_utils
