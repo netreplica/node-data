@@ -85,7 +85,7 @@ def get_clab_node_data(topology):
 
   kinds_params = {
     'linux':    ["ip -json address show"], # single element only
-    'ceos':     ["facts", "interfaces", "lldp_neighbors"],
+    'ceos':     ["facts", "interfaces", "lldp_neighbors", "interfaces_ip"],
     'crpd':     ["ip -json address show"], # single element only
   }
   
@@ -121,13 +121,30 @@ def get_clab_node_data(topology):
         if kind == "linux":
           interfaces_array = json.loads(r)
           interfaces = {}
+          interfaces_ip = {}
           for i in interfaces_array:
             if "link_index" in i:
               if "address" in i:
-                i["mac_address"] = i["address"]
+                i["mac_address"] = i.pop("address").upper()
+              if "addr_info" in i:
+                addr_info = i.pop("addr_info")
+                addr_ipv4 = {}
+                addr_ipv6 = {}
+                for a in addr_info:
+                  if a["family"] == "inet" and "local" in a and "prefixlen" in a:
+                    addr_ipv4[a["local"]] = {"prefix_length": a["prefixlen"]}
+                  elif a["family"] == "inet6" and "local" in a and "prefixlen" in a:
+                    addr_ipv6[a["local"]] = {"prefix_length": a["prefixlen"]}
+                if len(addr_ipv4) > 0 or len(addr_ipv6) > 0:
+                  interfaces_ip[i["ifname"]] = {}
+                if len(addr_ipv4) > 0:
+                  interfaces_ip[i["ifname"]] |= {"ipv4": addr_ipv4}
+                if len(addr_ipv6) > 0:
+                  interfaces_ip[i["ifname"]] |= {"ipv6": addr_ipv6}
               interfaces |= {i["ifname"]: i}
           n |= {"interface_list": list(interfaces.keys())}
           n |= {"interfaces": interfaces}
+          n |= {"interfaces_ip": interfaces_ip}
         else:
           for block in r:
             if block == "facts":
