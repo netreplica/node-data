@@ -1,6 +1,8 @@
 flask==2.1.2
+typing-extensions>=4.3.0
 netmiko==4.1.2
-nornir==3.1.1
+git+https://github.com/nornir-automation/nornir.git
 nornir_netmiko==0.2.0
+nornir_napalm==0.3.0
 nornir_ansible
 nornir_utils

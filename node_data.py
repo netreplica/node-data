@@ -9,10 +9,9 @@ from nornir.core.plugins.inventory import InventoryPluginRegister
 from nornir_ansible.plugins.inventory.ansible import AnsibleInventory
 
 from nornir_utils.plugins.functions import print_result
-#from nornir_napalm.plugins.tasks import napalm_get
+from nornir_napalm.plugins.tasks import napalm_get
 
 from nornir_netmiko import netmiko_send_command
-#from netmiko import ssh_exception
 
 InventoryPluginRegister.register("inventory", AnsibleInventory)
 
@@ -30,7 +29,7 @@ def nornir_connect_and_run_command(task, plugin, action, params, platform, usern
   task.host.open_connection(plugin, configuration=task.nornir.config, platform=platform, username=username, password=password)
   r = task.run(
     task=action,
-    command_string=params
+    command_string=params[0]
   )
   task.host.close_connection(plugin)
 
@@ -52,7 +51,7 @@ def get_clab_node_data(topology):
   )
 
   kinds_platforms = {
-#    'ceos':     'eos',
+    'ceos':     'eos',
 #    'crpd':     'junos', 
     'linux':     'linux', 
 #    'vr-veos':  'eos',
@@ -66,12 +65,30 @@ def get_clab_node_data(topology):
     'linux':    {"username": "root", "password": "root"},
   }
 
-  kinds_getters = {
-    'ceos':     ["facts", "interfaces", "lldp_neighbors"],
-    #'crpd':     ["config"],
-    'crpd':     [],
+  kinds_tasks = {
+    'linux':     nornir_connect_and_run_command,
+    'ceos':      nornir_connect_and_run_getters,
+    'crpd':      nornir_connect_and_run_command,
   }
 
+  kinds_plugins = {
+    'linux':     "netmiko",
+    'ceos':      "napalm",
+    'crpd':      "netmiko",
+  }
+
+  kinds_actions = {
+    'linux':     netmiko_send_command,
+    'ceos':      napalm_get,
+    'crpd':      netmiko_send_command,
+  }
+
+  kinds_params = {
+    'linux':    ["ip -json address show"], # single element only
+    'ceos':     ["facts", "interfaces", "lldp_neighbors"],
+    'crpd':     ["ip -json address show"], # single element only
+  }
+  
   node_data = {
     "name": topology,
     "type": "node-data",
@@ -79,41 +96,51 @@ def get_clab_node_data(topology):
   }
 
   nodes = {}
+  results = []
 
   for k, v in kinds_platforms.items():
     nr = nrinit.filter(F(groups__contains=k))
     r = nr.run(
-      #task=nornir_connect_and_run_getters,
-      task=nornir_connect_and_run_command,
-      #plugin="napalm",
-      plugin="netmiko",
-      #action=napalm_get,
-      action=netmiko_send_command,
-      #params=kinds_getters[k],
-      params="ip -json address show",
-      #params="show interfaces",
+      task=kinds_tasks[k],
+      plugin=kinds_plugins[k],
+      action=kinds_actions[k],
+      params=kinds_params[k],
       platform=v,
       username=kinds_credentials[k]["username"],
       password=kinds_credentials[k]["password"],
     )
-    for k, v in r.items():
+    results.append({"kind": k, "result": r})
+
+  for r in results:
+    kind = r["kind"]
+    for k, v in r["result"].items():
       if not v[0].failed:
-        print(k)
-        print(v[1])
-#        n = {}
-#        results = v[1].result
-#        for block in results:
-#          if block == "facts":
-#            n |= results["facts"] # flatten "facts"
-#          else:
-#            n |= {block: results[block]}
-#        nodes |= {k: n}
-#      else:
-#        return(f"Connection failed for: {k}. Error: {v[0]}")
-#
-#  node_data["nodes"] |= nodes
-#
-#  return(node_data)
+        n = {}
+        n |= {"kind": kind}
+        r = v[1].result
+        if kind == "linux":
+          interfaces_array = json.loads(r)
+          interfaces = {}
+          for i in interfaces_array:
+            if "link_index" in i:
+              if "address" in i:
+                i["mac_address"] = i["address"]
+              interfaces |= {i["ifname"]: i}
+          n |= {"interface_list": list(interfaces.keys())}
+          n |= {"interfaces": interfaces}
+        else:
+          for block in r:
+            if block == "facts":
+              n |= r["facts"] # flatten "facts"
+            else:
+              n |= {block: r[block]}
+        nodes |= {k: n}
+      else:
+        return(f"Connection failed for: {k}. Error: {v[0]}")
+
+  node_data["nodes"] |= nodes
+
+  return(node_data)
 
 def main():
   args = sys.argv[1:]
