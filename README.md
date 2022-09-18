@@ -33,7 +33,7 @@ Clone and initialize venv
 git clone <node-data-url>
 
 source ~/venv/host-data-poc39/bin/activate
-cd node-data
+cd ~/netreplica/code/host-data-poc/node-data
 pip3 install -r requirements.txt
 ```
 
@@ -46,6 +46,8 @@ python3 node_data.py <topology>
 Run as a Flask app:
 
 ```Shell
+source ~/venv/host-data-poc39/bin/activate
+cd ~/netreplica/code/host-data-poc/node-data
 FLASK_APP=node_data flask run --host=0.0.0.0
 ```
 
@@ -54,7 +56,7 @@ FLASK_APP=node_data flask run --host=0.0.0.0
 Run as a Jupyter notebook:
 ```Shell
 source ~/venv/host-data-jup39/bin/activate
-cd node-data
+cd ~/netreplica/code/host-data-poc/node-data
 pip3 install -r requirements.txt -r requirements_jupyter.txt
 jupyter notebook --ip=0.0.0.0
 ```
