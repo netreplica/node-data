@@ -52,8 +52,8 @@ def get_clab_node_data(topology):
 
   kinds_platforms = {
     'ceos':     'eos',
-#    'crpd':     'junos', 
-    'linux':     'linux', 
+    'crpd':     'linux', 
+    'linux':    'linux', 
 #    'vr-veos':  'eos',
 #    'vr-vmx':   'junos', 
 #    'vr-xrv9k': 'iosxr',
@@ -118,7 +118,7 @@ def get_clab_node_data(topology):
         n = {}
         n |= {"kind": kind}
         r = v[1].result
-        if kind == "linux":
+        if kinds_platforms[kind] == "linux":
           interfaces_array = json.loads(r)
           interfaces = {}
           interfaces_ip = {}
