@@ -11,14 +11,20 @@ from nornir_ansible.plugins.inventory.ansible import AnsibleInventory
 from nornir_utils.plugins.functions import print_result
 from nornir_napalm.plugins.tasks import napalm_get
 
-from nornir_netmiko import netmiko_send_command
+from nornir_scrapli.tasks import send_command
+from scrapli.driver import GenericDriver
 
 InventoryPluginRegister.register("inventory", AnsibleInventory)
 
 app = Flask(__name__)
 
 def nornir_connect_and_run_getters(task, plugin, action, params, platform, username, password):
-  task.host.open_connection(plugin, configuration=task.nornir.config, platform=platform, username=username, password=password)
+  task.host.open_connection(plugin, 
+                            configuration=task.nornir.config, 
+                            platform=platform, 
+                            username=username, 
+                            password=password,
+                            )
   r = task.run(
     task=action,
     getters=params
@@ -26,10 +32,19 @@ def nornir_connect_and_run_getters(task, plugin, action, params, platform, usern
   task.host.close_connection(plugin)
 
 def nornir_connect_and_run_command(task, plugin, action, params, platform, username, password):
-  task.host.open_connection(plugin, configuration=task.nornir.config, platform=platform, username=username, password=password)
+  task.host.open_connection(plugin, 
+                            configuration=task.nornir.config, 
+                            platform=platform, 
+                            username=username, 
+                            password=password,
+                            extras={
+                              "auth_strict_key": False,
+                              "channel_log": False,
+                            },
+                            )
   r = task.run(
     task=action,
-    command_string=params[0]
+    command=params[0]
   )
   task.host.close_connection(plugin)
 
@@ -51,18 +66,18 @@ def get_clab_node_data(topology):
   )
 
   kinds_platforms = {
+    'linux':    'generic', 
     'ceos':     'eos',
-    'crpd':     'linux', 
-    'linux':    'linux', 
+#    'crpd':     'generic', # TODO broken due to https://github.com/scrapli/nornir_scrapli/issues/132
 #    'vr-veos':  'eos',
 #    'vr-vmx':   'junos', 
 #    'vr-xrv9k': 'iosxr',
   }
 
   kinds_credentials = {
+    'linux':    {"username": "root", "password": "root"},
     'ceos':     {"username": "admin", "password": "admin"},
     'crpd':     {"username": "root", "password": "clab123"},
-    'linux':    {"username": "root", "password": "root"},
   }
 
   kinds_tasks = {
@@ -72,15 +87,15 @@ def get_clab_node_data(topology):
   }
 
   kinds_plugins = {
-    'linux':     "netmiko",
+    'linux':     "scrapli",
     'ceos':      "napalm",
-    'crpd':      "netmiko",
+    'crpd':      "scrapli",
   }
 
   kinds_actions = {
-    'linux':     netmiko_send_command,
+    'linux':     send_command,
     'ceos':      napalm_get,
-    'crpd':      netmiko_send_command,
+    'crpd':      send_command,
   }
 
   kinds_params = {
@@ -118,7 +133,7 @@ def get_clab_node_data(topology):
         n = {}
         n |= {"kind": kind}
         r = v[1].result
-        if kinds_platforms[kind] == "linux":
+        if kinds_platforms[kind] == kinds_platforms["linux"]:
           interfaces_array = json.loads(r)
           interfaces = {}
           interfaces_ip = {}
