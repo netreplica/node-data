@@ -40,6 +40,7 @@ def nornir_connect_and_run_command(task, plugin, action, params, platform, usern
                             extras={
                               "auth_strict_key": False,
                               "channel_log": False,
+                              "comms_prompt_pattern": r".*:~#",  # see https://github.com/scrapli/nornir_scrapli/issues/132
                             },
                             )
   r = task.run(
@@ -68,7 +69,7 @@ def get_clab_node_data(topology):
   kinds_platforms = {
     'linux':    'generic', 
     'ceos':     'eos',
-#    'crpd':     'generic', # TODO broken due to https://github.com/scrapli/nornir_scrapli/issues/132
+    'crpd':     'generic',
 #    'vr-veos':  'eos',
 #    'vr-vmx':   'junos', 
 #    'vr-xrv9k': 'iosxr',
