@@ -11,15 +11,41 @@ from nornir_ansible.plugins.inventory.ansible import AnsibleInventory
 from nornir_utils.plugins.functions import print_result
 from nornir_napalm.plugins.tasks import napalm_get
 
+from nornir_scrapli.tasks import send_command
+from scrapli.driver import GenericDriver
+
 InventoryPluginRegister.register("inventory", AnsibleInventory)
 
 app = Flask(__name__)
 
-def nornir_connect_and_run(task, plugin, action, params, platform, username, password):
-  task.host.open_connection(plugin, configuration=task.nornir.config, platform=platform, username=username, password=password)
+def nornir_connect_and_run_getters(task, plugin, action, params, platform, username, password):
+  task.host.open_connection(plugin, 
+                            configuration=task.nornir.config, 
+                            platform=platform, 
+                            username=username, 
+                            password=password,
+                            )
   r = task.run(
     task=action,
     getters=params
+  )
+  task.host.close_connection(plugin)
+
+def nornir_connect_and_run_command(task, plugin, action, params, platform, username, password):
+  task.host.open_connection(plugin, 
+                            configuration=task.nornir.config, 
+                            platform=platform, 
+                            username=username, 
+                            password=password,
+                            extras={
+                              "auth_strict_key": False,
+                              "channel_log": False,
+                              "comms_prompt_pattern": r".*:~#",  # see https://github.com/scrapli/nornir_scrapli/issues/132
+                            },
+                            )
+  r = task.run(
+    task=action,
+    command=params[0]
   )
   task.host.close_connection(plugin)
 
@@ -41,24 +67,44 @@ def get_clab_node_data(topology):
   )
 
   kinds_platforms = {
+    'linux':    'generic', 
     'ceos':     'eos',
-    'crpd':     'junos', 
+    'crpd':     'generic',
 #    'vr-veos':  'eos',
 #    'vr-vmx':   'junos', 
 #    'vr-xrv9k': 'iosxr',
   }
 
   kinds_credentials = {
+    'linux':    {"username": "root", "password": "root"},
     'ceos':     {"username": "admin", "password": "admin"},
     'crpd':     {"username": "root", "password": "clab123"},
   }
 
-  kinds_getters = {
-    'ceos':     ["facts", "interfaces", "lldp_neighbors"],
-    #'crpd':     ["config"],
-    'crpd':     [],
+  kinds_tasks = {
+    'linux':     nornir_connect_and_run_command,
+    'ceos':      nornir_connect_and_run_getters,
+    'crpd':      nornir_connect_and_run_command,
   }
 
+  kinds_plugins = {
+    'linux':     "scrapli",
+    'ceos':      "napalm",
+    'crpd':      "scrapli",
+  }
+
+  kinds_actions = {
+    'linux':     send_command,
+    'ceos':      napalm_get,
+    'crpd':      send_command,
+  }
+
+  kinds_params = {
+    'linux':    ["ip -json address show"], # single element only
+    'ceos':     ["facts", "interfaces", "lldp_neighbors", "interfaces_ip"],
+    'crpd':     ["ip -json address show"], # single element only
+  }
+  
   node_data = {
     "name": topology,
     "type": "node-data",
@@ -66,27 +112,61 @@ def get_clab_node_data(topology):
   }
 
   nodes = {}
+  results = []
 
   for k, v in kinds_platforms.items():
     nr = nrinit.filter(F(groups__contains=k))
     r = nr.run(
-      task=nornir_connect_and_run,
-      plugin="napalm",
-      action=napalm_get,
-      params=kinds_getters[k],
+      task=kinds_tasks[k],
+      plugin=kinds_plugins[k],
+      action=kinds_actions[k],
+      params=kinds_params[k],
       platform=v,
       username=kinds_credentials[k]["username"],
       password=kinds_credentials[k]["password"],
     )
-    for k, v in r.items():
+    results.append({"kind": k, "result": r})
+
+  for r in results:
+    kind = r["kind"]
+    for k, v in r["result"].items():
       if not v[0].failed:
         n = {}
-        results = v[1].result
-        for block in results:
-          if block == "facts":
-            n |= results["facts"] # flatten "facts"
-          else:
-            n |= {block: results[block]}
+        n |= {"kind": kind}
+        r = v[1].result
+        if kinds_platforms[kind] == kinds_platforms["linux"]:
+          interfaces_array = json.loads(r)
+          interfaces = {}
+          interfaces_ip = {}
+          for i in interfaces_array:
+            if "link_index" in i:
+              if "address" in i:
+                i["mac_address"] = i.pop("address").upper()
+              if "addr_info" in i:
+                addr_info = i.pop("addr_info")
+                addr_ipv4 = {}
+                addr_ipv6 = {}
+                for a in addr_info:
+                  if a["family"] == "inet" and "local" in a and "prefixlen" in a:
+                    addr_ipv4[a["local"]] = {"prefix_length": a["prefixlen"]}
+                  elif a["family"] == "inet6" and "local" in a and "prefixlen" in a:
+                    addr_ipv6[a["local"]] = {"prefix_length": a["prefixlen"]}
+                if len(addr_ipv4) > 0 or len(addr_ipv6) > 0:
+                  interfaces_ip[i["ifname"]] = {}
+                if len(addr_ipv4) > 0:
+                  interfaces_ip[i["ifname"]] |= {"ipv4": addr_ipv4}
+                if len(addr_ipv6) > 0:
+                  interfaces_ip[i["ifname"]] |= {"ipv6": addr_ipv6}
+              interfaces |= {i["ifname"]: i}
+          n |= {"interface_list": list(interfaces.keys())}
+          n |= {"interfaces": interfaces}
+          n |= {"interfaces_ip": interfaces_ip}
+        else:
+          for block in r:
+            if block == "facts":
+              n |= r["facts"] # flatten "facts"
+            else:
+              n |= {block: r[block]}
         nodes |= {k: n}
       else:
         return(f"Connection failed for: {k}. Error: {v[0]}")
