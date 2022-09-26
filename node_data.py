@@ -11,7 +11,7 @@ from nornir_ansible.plugins.inventory.ansible import AnsibleInventory
 from nornir_utils.plugins.functions import print_result
 from nornir_napalm.plugins.tasks import napalm_get
 
-from nornir_scrapli.tasks import send_command
+from nornir_scrapli.tasks import send_commands
 from scrapli.driver import GenericDriver
 
 InventoryPluginRegister.register("inventory", AnsibleInventory)
@@ -27,11 +27,11 @@ def nornir_connect_and_run_getters(task, plugin, action, params, platform, usern
                             )
   r = task.run(
     task=action,
-    getters=params
+    getters=params,
   )
   task.host.close_connection(plugin)
 
-def nornir_connect_and_run_command(task, plugin, action, params, platform, username, password):
+def nornir_connect_and_run_commands(task, plugin, action, params, platform, username, password):
   task.host.open_connection(plugin, 
                             configuration=task.nornir.config, 
                             platform=platform, 
@@ -45,9 +45,157 @@ def nornir_connect_and_run_command(task, plugin, action, params, platform, usern
                             )
   r = task.run(
     task=action,
-    command=params[0]
+    commands=params,
   )
   task.host.close_connection(plugin)
+
+
+kinds_platforms = {
+  'linux':    'generic', 
+  'ceos':     'eos',
+  'crpd':     'generic',
+#    'vr-veos':  'eos',
+#    'vr-vmx':   'junos', 
+#    'vr-xrv9k': 'iosxr',
+}
+
+kinds_credentials = {
+  'linux':    {"username": "root", "password": "root"},
+  'ceos':     {"username": "admin", "password": "admin"},
+  'crpd':     {"username": "root", "password": "clab123"},
+}
+
+kinds_tasks = {
+  'linux':     nornir_connect_and_run_commands,
+  'ceos':      nornir_connect_and_run_getters,
+  'crpd':      nornir_connect_and_run_commands,
+}
+
+kinds_plugins = {
+  'linux':     "scrapli",
+  'ceos':      "napalm",
+  'crpd':      "scrapli",
+}
+
+kinds_actions = {
+  'linux':     send_commands,
+  'ceos':      napalm_get,
+  'crpd':      send_commands,
+}
+
+kinds_params = {
+  'linux': {
+    'hostname': "cat /proc/sys/kernel/hostname",
+    'domainname': "cat /proc/sys/kernel/domainname",
+    'vendor': "source /etc/lsb-release; echo $DISTRIB_ID",
+    'model': "echo $DISTRIB_RELEASE",
+    'serial_number': "cat /sys/devices/virtual/dmi/id/product_serial",
+    'os_version': "cat /proc/version",
+    'uptime': "cat /proc/uptime",
+    'interfaces': "ip -json address show",
+  },
+  'ceos': {
+      'facts': "facts",
+      'interfaces': "interfaces",
+      'interfaces_ip': "interfaces_ip",
+      'lldp_neighbors': "lldp_neighbors",
+  },
+  'crpd': {
+    'hostname': "cat /proc/sys/kernel/hostname",
+    'domainname': "cat /proc/sys/kernel/domainname",
+    'vendor': "source /etc/lsb-release; echo $DISTRIB_ID",
+    'model': "echo $DISTRIB_RELEASE",
+    'serial_number': "cat /sys/devices/virtual/dmi/id/product_serial",
+    'os_version': "cat /proc/version",
+    'uptime': "cat /proc/uptime",
+    'interfaces': "ip -json address show",
+  },
+}
+
+def pull_data(nrinit):
+  results = []
+  for k, v in kinds_platforms.items():
+    nr = nrinit.filter(F(groups__contains=k))
+    r = nr.run(
+      task=kinds_tasks[k],
+      plugin=kinds_plugins[k],
+      action=kinds_actions[k],
+      params=list(kinds_params[k].values()),
+      platform=v,
+      username=kinds_credentials[k]["username"],
+      password=kinds_credentials[k]["password"],
+    )
+    results.append({"kind": k, "result": r})
+  return(results)
+
+
+def parse_results_generic(kind, result):
+    data = {"kind": kind}
+    params = list(kinds_params[kind].keys())
+    # scrapli send_commands return multi-line string as a result
+    outputs = result.split("\n\n")
+    if len(params) != len(outputs):
+      data |= {"error": f"Number of commands and their outputs don't match"}
+      return data
+    collects = {}
+    for i in range(0, len(params)):
+      collects[params[i]] = outputs[i]
+    for p, v in collects.items():
+      if p == 'domainname':
+        if 'hostname' in collects:
+          if v == "(none)":
+            data |= {'fqdn': collects['hostname']}
+          else:
+            data |= {'fqdn': collects['hostname'] + "." + v}
+      elif p == 'os_version':
+        p_split = v.split()
+        # 'Linux version 5.11.0-46-generic (buildd@lgw01-amd64-010) (gcc (Ubuntu 9.3.0-17ubuntu1~20.04) 9.3.0, GNU ld (GNU Binutils for Ubuntu) 2.34) #51~20.04.1-Ubuntu SMP Fri Jan 7 06:51:40 UTC 2022'
+        if v.startswith("Linux version ") and len(p_split) > 2:
+          data |= {p: p_split[2]} 
+      elif p == 'uptime':
+        # '14165.70 54889.16'
+        data |= {'uptime': float(collects['uptime'].split()[0])}
+      elif p == 'interfaces':
+        interfaces_array = json.loads(v)
+        interfaces = {}
+        interfaces_ip = {}
+        for i in interfaces_array:
+          if "link_index" in i:
+            if "address" in i:
+              i["mac_address"] = i.pop("address").upper()
+            if "addr_info" in i:
+              addr_info = i.pop("addr_info")
+              addr_ipv4 = {}
+              addr_ipv6 = {}
+              for a in addr_info:
+                if a["family"] == "inet" and "local" in a and "prefixlen" in a:
+                  addr_ipv4[a["local"]] = {"prefix_length": a["prefixlen"]}
+                elif a["family"] == "inet6" and "local" in a and "prefixlen" in a:
+                  addr_ipv6[a["local"]] = {"prefix_length": a["prefixlen"]}
+              if len(addr_ipv4) > 0 or len(addr_ipv6) > 0:
+                interfaces_ip[i["ifname"]] = {}
+              if len(addr_ipv4) > 0:
+                interfaces_ip[i["ifname"]] |= {"ipv4": addr_ipv4}
+              if len(addr_ipv6) > 0:
+                interfaces_ip[i["ifname"]] |= {"ipv6": addr_ipv6}
+            interfaces |= {i["ifname"]: i}
+        data |= {"interface_list": list(interfaces.keys())}
+        data |= {"interfaces": interfaces}
+        data |= {"interfaces_ip": interfaces_ip}
+      else:
+        data |= {p: v}
+        
+    return data
+
+def parse_results_napalm(kind, result):
+    data = {"kind": kind}
+    for block in result:
+      if block == "facts":
+        data |= result["facts"] # flatten "facts"
+      else:
+        data |= {block: result[block]}
+    
+    return data
 
 def get_clab_node_data(topology):
   # Initialize Nornir object with Containerlab ansible inventory
@@ -66,45 +214,6 @@ def get_clab_node_data(topology):
       },
   )
 
-  kinds_platforms = {
-    'linux':    'generic', 
-    'ceos':     'eos',
-    'crpd':     'generic',
-#    'vr-veos':  'eos',
-#    'vr-vmx':   'junos', 
-#    'vr-xrv9k': 'iosxr',
-  }
-
-  kinds_credentials = {
-    'linux':    {"username": "root", "password": "root"},
-    'ceos':     {"username": "admin", "password": "admin"},
-    'crpd':     {"username": "root", "password": "clab123"},
-  }
-
-  kinds_tasks = {
-    'linux':     nornir_connect_and_run_command,
-    'ceos':      nornir_connect_and_run_getters,
-    'crpd':      nornir_connect_and_run_command,
-  }
-
-  kinds_plugins = {
-    'linux':     "scrapli",
-    'ceos':      "napalm",
-    'crpd':      "scrapli",
-  }
-
-  kinds_actions = {
-    'linux':     send_command,
-    'ceos':      napalm_get,
-    'crpd':      send_command,
-  }
-
-  kinds_params = {
-    'linux':    ["ip -json address show"], # single element only
-    'ceos':     ["facts", "interfaces", "lldp_neighbors", "interfaces_ip"],
-    'crpd':     ["ip -json address show"], # single element only
-  }
-  
   node_data = {
     "name": topology,
     "type": "node-data",
@@ -112,64 +221,21 @@ def get_clab_node_data(topology):
   }
 
   nodes = {}
-  results = []
-
-  for k, v in kinds_platforms.items():
-    nr = nrinit.filter(F(groups__contains=k))
-    r = nr.run(
-      task=kinds_tasks[k],
-      plugin=kinds_plugins[k],
-      action=kinds_actions[k],
-      params=kinds_params[k],
-      platform=v,
-      username=kinds_credentials[k]["username"],
-      password=kinds_credentials[k]["password"],
-    )
-    results.append({"kind": k, "result": r})
+  results = pull_data(nrinit)
 
   for r in results:
     kind = r["kind"]
     for k, v in r["result"].items():
       if not v[0].failed:
         n = {}
-        n |= {"kind": kind}
-        r = v[1].result
-        if kinds_platforms[kind] == kinds_platforms["linux"]:
-          interfaces_array = json.loads(r)
-          interfaces = {}
-          interfaces_ip = {}
-          for i in interfaces_array:
-            if "link_index" in i:
-              if "address" in i:
-                i["mac_address"] = i.pop("address").upper()
-              if "addr_info" in i:
-                addr_info = i.pop("addr_info")
-                addr_ipv4 = {}
-                addr_ipv6 = {}
-                for a in addr_info:
-                  if a["family"] == "inet" and "local" in a and "prefixlen" in a:
-                    addr_ipv4[a["local"]] = {"prefix_length": a["prefixlen"]}
-                  elif a["family"] == "inet6" and "local" in a and "prefixlen" in a:
-                    addr_ipv6[a["local"]] = {"prefix_length": a["prefixlen"]}
-                if len(addr_ipv4) > 0 or len(addr_ipv6) > 0:
-                  interfaces_ip[i["ifname"]] = {}
-                if len(addr_ipv4) > 0:
-                  interfaces_ip[i["ifname"]] |= {"ipv4": addr_ipv4}
-                if len(addr_ipv6) > 0:
-                  interfaces_ip[i["ifname"]] |= {"ipv6": addr_ipv6}
-              interfaces |= {i["ifname"]: i}
-          n |= {"interface_list": list(interfaces.keys())}
-          n |= {"interfaces": interfaces}
-          n |= {"interfaces_ip": interfaces_ip}
+        if kinds_platforms[kind] == "generic":
+          n |= parse_results_generic(kind, v[1].result)
         else:
-          for block in r:
-            if block == "facts":
-              n |= r["facts"] # flatten "facts"
-            else:
-              n |= {block: r[block]}
-        nodes |= {k: n}
+          n |= parse_results_napalm(kind, v[1].result)
       else:
-        return(f"Connection failed for: {k}. Error: {v[0]}")
+        n = {"kind": kind}
+        n |= {"error": f"Connection failed. Error: {v[0]}"}
+      nodes |= {k: n}
 
   node_data["nodes"] |= nodes
 
