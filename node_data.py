@@ -232,9 +232,10 @@ def get_clab_node_data(topology):
           n |= parse_results_generic(kind, v[1].result)
         else:
           n |= parse_results_napalm(kind, v[1].result)
-        nodes |= {k: n}
       else:
-        return(f"Connection failed for: {k}. Error: {v[0]}")
+        n = {"kind": kind}
+        n |= {"error": f"Connection failed. Error: {v[0]}"}
+      nodes |= {k: n}
 
   node_data["nodes"] |= nodes
 
