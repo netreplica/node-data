@@ -40,15 +40,15 @@ pip3 install -r requirements.txt
 Manual CLI run:
 
 ```Shell
-python3 node_data.py <topology>
+python3 node_data.py -r "../clab" -t <topology>
 ```
 
 Run as a Flask app:
 
 ```Shell
 source ~/venv/host-data-poc39/bin/activate
-cd ~/netreplica/code/host-data-poc/node-data
-FLASK_APP=node_data flask run --host=0.0.0.0
+cd ~/netreplica/code/host-data-poc/
+flask --app=node-data run --host=0.0.0.0
 ```
 
 
