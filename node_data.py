@@ -1,4 +1,7 @@
 import sys
+import argparse
+from pathlib import Path
+
 from flask import Flask, escape, request
 
 import json
@@ -14,9 +17,20 @@ from nornir_napalm.plugins.tasks import napalm_get
 from nornir_scrapli.tasks import send_commands
 from scrapli.driver import GenericDriver
 
+# DEFINE GLOBAL VARs HERE
+
+debug_on = False
+
 InventoryPluginRegister.register("inventory", AnsibleInventory)
 
 app = Flask(__name__)
+
+def errlog(*args, **kwargs):
+  print(*args, file=sys.stderr, **kwargs)
+
+def debug(*args, **kwargs):
+  if debug_on:
+    errlog(*args, **kwargs)
 
 def nornir_connect_and_run_getters(task, plugin, action, params, platform, username, password):
   task.host.open_connection(plugin, 
@@ -197,7 +211,20 @@ def parse_results_napalm(kind, result):
     
     return data
 
-def get_clab_node_data(topology):
+def get_clab_node_data(root, topology):
+  node_data = {
+    "name": topology,
+    "type": "node-data",
+    "nodes": {},
+    "errors": []
+  }
+
+
+  inventory = Path(f"{root}/clab-{topology}/ansible-inventory.yml")
+  if not(inventory.is_file()):
+    node_data["errors"].append(f"No such inventory file: {inventory}")
+    return(node_data)
+    
   # Initialize Nornir object with Containerlab ansible inventory
   nrinit = InitNornir(
       runner={
@@ -209,16 +236,10 @@ def get_clab_node_data(topology):
       inventory={
           "plugin": "AnsibleInventory",
           "options": {
-              "hostsfile": f"../clab/clab-{topology}/ansible-inventory.yml"
+              "hostsfile": inventory
           },
       },
   )
-
-  node_data = {
-    "name": topology,
-    "type": "node-data",
-    "nodes": {},
-  }
 
   nodes = {}
   results = pull_data(nrinit)
@@ -242,8 +263,22 @@ def get_clab_node_data(topology):
   return(node_data)
 
 def main():
-  args = sys.argv[1:]
-  print(json.dumps(get_clab_node_data(args[0])))
+  # CLI arguments parser
+  parser = argparse.ArgumentParser(prog='node_data.py', description='Node Data API for Containerlab (experimental)')
+  parser.add_argument('-r', '--root', required=True, help='root directory to search for topology subfolders')
+  parser.add_argument('-t', '--topology', required=True, help='topology name to look for inventory file')
+  parser.add_argument('-d', '--debug', required=False, help='enable debug output', action=argparse.BooleanOptionalAction)
+  
+  # Common parameters
+  args = parser.parse_args()
+  
+  global debug_on
+  debug_on = (args.debug == True)
+  debug(f"DEBUG: arguments {args}")
+  
+  root = args.root
+  topology = args.topology
+  print(json.dumps(get_clab_node_data(root, topology)))
 
 if __name__ == "__main__":
     main()
