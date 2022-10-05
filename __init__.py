@@ -6,12 +6,12 @@ def create_app(config=None):
   # create and configure the app
   app = Flask(__name__, instance_relative_config=True)
   app.config.from_mapping(
-    ROOT='./clab',
+    ROOT='.',
   )
   
   if config is None:
     # load the instance config, if it exists
-    app.config.from_pyfile('config.py', silent=True)
+    app.config.from_pyfile(__name__ + '.cfg', silent=True)
   else:
     # load the config if passed in
     app.config.from_mapping(config)

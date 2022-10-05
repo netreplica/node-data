@@ -33,8 +33,12 @@ Clone and initialize venv
 git clone <node-data-url>
 
 source ~/venv/host-data-poc39/bin/activate
-cd ~/netreplica/code/host-data-poc/node-data
-pip3 install -r requirements.txt
+cd ~/netreplica/code/host-data-poc
+pip3 install -r node-data/requirements.txt
+mkdir -p instance
+cat > instance/node-data.cfg << EOF
+ROOT='./clab'
+EOF
 ```
 
 Manual CLI run:
