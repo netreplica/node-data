@@ -1,5 +1,4 @@
-import sys
-import json
+import sys, io, json
 
 from pathlib import Path
 
@@ -196,7 +195,7 @@ def parse_results_napalm(kind, result):
     
     return data
 
-def get_clab_node_data(root, topology):
+def get_clab_node_data(root, topology, secrets=""):
   node_data = {
     "name": topology,
     "type": "node-data",
@@ -204,12 +203,25 @@ def get_clab_node_data(root, topology):
     "errors": []
   }
 
-
-  inventory = Path(f"{root}/clab-{topology}/ansible-inventory.yml")
+  inventory = Path(f"{root}/clab-{topology}/ansible-inventory.yml") # TODO remove "clab-" and instead supply a directory name as a topology
   if not(inventory.is_file()):
     node_data["errors"].append(f"No such inventory file: {inventory}")
     return(node_data)
-    
+
+  global kinds_credentials
+  if secrets != None and secrets != "":
+    try:
+      with open(secrets, "r", encoding="utf-8") as f:
+        try:
+          kinds_credentials = json.load(f)
+        except json.decoder.JSONDecodeError:
+          pass
+          node_data["errors"].append(f"Error parsing {secrets}")
+        f.close()
+    except OSError:
+      pass
+      node_data["errors"].append(f"Can't open secrets file: {secrets}")
+
   # Initialize Nornir object with Containerlab ansible inventory
   nrinit = InitNornir(
       runner={
@@ -225,7 +237,7 @@ def get_clab_node_data(root, topology):
           },
       },
   )
-
+  
   nodes = {}
   results = pull_data(nrinit)
 
