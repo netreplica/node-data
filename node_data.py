@@ -20,6 +20,7 @@ def main():
   parser = argparse.ArgumentParser(prog='node_data.py', description='Node Data API for Containerlab (experimental)')
   parser.add_argument('-r', '--root', required=True, help='root directory to search for topology subfolders')
   parser.add_argument('-t', '--topology', required=True, help='topology name to look for inventory file')
+  parser.add_argument('-s', '--secrets', required=False, help='path to a file with kinds_credentials')
   parser.add_argument('-d', '--debug', required=False, help='enable debug output', action=argparse.BooleanOptionalAction)
   
   # Common parameters
@@ -31,7 +32,8 @@ def main():
   
   root = args.root
   topology = args.topology
-  print(json.dumps(get_clab_node_data(root, topology)))
+  secrets = args.secrets
+  print(json.dumps(get_clab_node_data(root, topology, secrets)))
 
 if __name__ == "__main__":
     main()

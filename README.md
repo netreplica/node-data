@@ -36,8 +36,18 @@ source ~/venv/host-data-poc39/bin/activate
 cd ~/netreplica/code/host-data-poc
 pip3 install -r node-data/requirements.txt
 mkdir -p instance
+
 cat > instance/node-data.cfg << EOF
 ROOT='./clab'
+SECRETS='instance/secrets.json'
+EOF
+
+cat > instance/secrets.json << EOF
+{
+  "linux":    {"username": "root", "password": "root"},
+  "ceos":     {"username": "admin", "password": "admin"},
+  "crpd":     {"username": "root", "password": "clab123"}
+}
 EOF
 ```
 
