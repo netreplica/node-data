@@ -203,7 +203,6 @@ def get_clab_node_data(root, topology, secrets=""):
     "errors": []
   }
 
-
   inventory = Path(f"{root}/clab-{topology}/ansible-inventory.yml") # TODO remove "clab-" and instead supply a directory name as a topology
   if not(inventory.is_file()):
     node_data["errors"].append(f"No such inventory file: {inventory}")
@@ -213,13 +212,15 @@ def get_clab_node_data(root, topology, secrets=""):
   if secrets != None and secrets != "":
     try:
       with open(secrets, "r", encoding="utf-8") as f:
-        kinds_credentials = json.load(f)
+        try:
+          kinds_credentials = json.load(f)
+        except json.decoder.JSONDecodeError:
+          pass
+          node_data["errors"].append(f"Error parsing {secrets}")
+        f.close()
     except OSError:
       pass
-      node_data["errors"].append(f"No such secrets file: {secrets}")
-    except json.decoder.JSONDecodeError:
-      pass
-      node_data["errors"].append(f"Error parsing {secrets}")
+      node_data["errors"].append(f"Can't open secrets file: {secrets}")
 
   # Initialize Nornir object with Containerlab ansible inventory
   nrinit = InitNornir(

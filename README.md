@@ -42,6 +42,8 @@ ROOT='./clab'
 SECRETS='instance/secrets.json'
 EOF
 
+touch instance/secrets.json
+chmod 600 instance/secrets.json
 cat > instance/secrets.json << EOF
 {
   "linux":    {"username": "root", "password": "root"},
