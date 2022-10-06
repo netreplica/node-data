@@ -19,7 +19,7 @@ def main():
   # CLI arguments parser
   parser = argparse.ArgumentParser(prog='node_data.py', description='Node Data API for Containerlab (experimental)')
   parser.add_argument('-r', '--root', required=True, help='root directory to search for topology subfolders')
-  parser.add_argument('-t', '--topology', required=True, help='topology name to look for inventory file')
+  parser.add_argument('-t', '--topology', required=False, help='topology name to look for inventory file')
   parser.add_argument('-s', '--secrets', required=False, help='path to a file with kinds_credentials')
   parser.add_argument('-d', '--debug', required=False, help='enable debug output', action=argparse.BooleanOptionalAction)
   
