@@ -203,10 +203,14 @@ def get_clab_node_data(root, topology, secrets=""):
     "errors": []
   }
 
-  inventory = Path(f"{root}/clab-{topology}/ansible-inventory.yml") # TODO remove "clab-" and instead supply a directory name as a topology
+  inventory = Path(f"{root}/clab-{topology}/ansible-inventory.yml") # TODO provide configurable prefix instead of "clab-"
+  default_inventory = Path(f"{root}/default/ansible-inventory.yml")
   if not(inventory.is_file()):
-    node_data["errors"].append(f"No such inventory file: {inventory}")
-    return(node_data)
+    if default_inventory.is_file():
+      inventory = default_inventory
+    else:
+      node_data["errors"].append(f"No such inventory file: {inventory}")
+      return(node_data)
 
   global kinds_credentials
   if secrets != None and secrets != "":

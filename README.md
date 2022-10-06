@@ -53,10 +53,10 @@ cat > instance/secrets.json << EOF
 EOF
 ```
 
-Manual CLI run:
+Manual CLI run. Note: if no `<topology>` parameter is provided, `node-data` will use `<root>/default` folder to locate `ansible-inventory.yml` file.
 
 ```Shell
-python3 node_data.py -r "../clab" -t <topology>
+python3 node-data/node_data.py -r <root> -t <topology>
 ```
 
 Run as a Flask app:
