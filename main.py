@@ -2,7 +2,7 @@ import sys
 import argparse
 import json
 
-from clab import *
+from nodedata.clab import *
 
 # DEFINE GLOBAL VARs HERE
 
