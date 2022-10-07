@@ -56,18 +56,39 @@ EOF
 Manual CLI run. Note: if no `<topology>` parameter is provided, `node-data` will use `<root>/default` folder to locate `ansible-inventory.yml` file.
 
 ```Shell
-python3 node-data/node_data.py -r <root> -t <topology>
+source ~/venv/host-data-poc39/bin/activate
+cd ~/netreplica/code/host-data-poc/node-data
+python3 main.py -r <root> -t <topology>
 ```
 
 Run as a Flask app:
 
 ```Shell
 source ~/venv/host-data-poc39/bin/activate
-cd ~/netreplica/code/host-data-poc/
-flask --app=node-data run --host=0.0.0.0
+cd ~/netreplica/code/host-data-poc/node-data
+flask --app=nodedata run --host=0.0.0.0
 ```
 
+Build for Prod server:
 
+```Shell
+cd ~/netreplica/code/host-data-poc/node-data
+pip3 install -r requirements.txt -r requirements_prod.txt
+pip install -e .
+python setup.py bdist_wheel
+```
+
+Run as prod
+
+```Shell
+cd ~/venv
+export PYENV=host-data-prod
+python3.9 -m venv $PYENV
+source "$PYENV/bin/activate"
+cd ~/netreplica/code/host-data-poc/node-data
+pip3 install -r requirements.txt -r requirements_prod.txt
+uwsgi --socket 127.0.0.1:5000 --protocol=http -w wsgi:app --master -p 4
+```
 
 Run as a Jupyter notebook:
 ```Shell
