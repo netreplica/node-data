@@ -75,7 +75,6 @@ Build for Prod server:
 cd ~/netreplica/code/host-data-poc/node-data
 pip3 install -r requirements.txt -r requirements_prod.txt
 pip install -e .
-python setup.py bdist_wheel
 ```
 
 Run as prod
