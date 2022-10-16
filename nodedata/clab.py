@@ -203,7 +203,9 @@ def get_clab_node_data(root, topology, secrets=""):
     "errors": []
   }
 
-  inventory = Path(f"{root}/clab-{topology}/ansible-inventory.yml") # TODO provide configurable prefix instead of "clab-"
+  # NOTE on "clab-" prefix from https://containerlab.dev/manual/topo-def-file/#prefix
+  # Even when you change the prefix, the lab directory is still uniformly named using the clab-<lab-name> pattern.
+  inventory = Path(f"{root}/clab-{topology}/ansible-inventory.yml")
   default_inventory = Path(f"{root}/default/ansible-inventory.yml")
   if not(inventory.is_file()):
     if default_inventory.is_file():
