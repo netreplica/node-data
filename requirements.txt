@@ -5,3 +5,4 @@ nornir_napalm==0.3.0
 nornir_ansible
 nornir_utils
 nornir_scrapli==2022.07.30
+nornir-pygnmi==0.2.0
