@@ -69,6 +69,21 @@ cd ~/netreplica/code/host-data-poc/node-data
 flask --app=nodedata run --host=0.0.0.0
 ```
 
+With graphite as a standalone docker:
+
+```Shell
+cd ~/netreplica/clab
+CLABDIR=`pwd`
+docker run -d -t \
+  -v "${CLABDIR}":/htdocs/lab \
+  -v "${CLABDIR}/proxy.conf":/etc/lighttpd/conf.d/proxy.conf \
+  -p 8080:80 \
+  --name graphite \
+  netreplica/graphite:nanog86
+```
+
+Open: http://localhost:8080/graphite/index.html?type=clabdata&topo=topology_name (http://clabvm:8080/graphite/index.html?type=clabdata&topo=srl_ceos)
+
 Build for Prod server:
 
 ```Shell
