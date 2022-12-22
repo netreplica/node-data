@@ -79,6 +79,7 @@ docker run -d -t \
   -v "${CLABDIR}/proxy.conf":/etc/lighttpd/conf.d/proxy.conf \
   -p 8080:80 \
   --name graphite \
+  --network=clab \
   netreplica/graphite:nanog86
 ```
 

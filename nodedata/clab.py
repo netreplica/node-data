@@ -135,6 +135,7 @@ kinds_params = {
   },
   'srl': {
     'hostname':      "srl_nokia-system:system/srl_nokia-system-name:name/host-name",
+    'domainname':    "srl_nokia-system:system/srl_nokia-system-name:name/domain-name",
     'os_version':    "srl_nokia-system:system/srl_nokia-system-info:information/version",
     'model':         "srl_nokia-platform:platform/srl_nokia-platform-chassis:chassis/type",
     'serial_number': "srl_nokia-platform:platform/srl_nokia-platform-chassis:chassis/serial-number",
@@ -233,20 +234,22 @@ def parse_results_gnmi_get(kind, result):
     paths = list(kinds_params[kind].values())
     # flatten multiple updates into one list
     outputs = []
-    for n in result["notification"]:
-        for u in n["update"]:
-          outputs.append(u)
-    #print(outputs)
-    if len(params) != len(outputs):
-      data |= {"error": f"Number of commands and their outputs don't match"}
-      return data
-    collects = {}
+    if "notification" in result:
+      for n in result["notification"]:
+        if "update" in n.keys():
+          for u in n["update"]:
+            outputs.append(u)
     for i in range(0, len(params)):
       for o in outputs:
-        #print(o)
         if o["path"] == paths[i]: # found an update matching current path in params
             data |= {params[i]: o["val"]}
     
+    if 'hostname' in data.keys():
+      if 'domainname' in data.keys() and data['domainname'] != "":
+        data |= {'fqdn': data['hostname'] + "." + data['domainname']}
+      else:
+        data |= {'fqdn': data['hostname']}
+
     return data
 
 def get_clab_node_data(root, topology, secrets=""):
