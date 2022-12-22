@@ -14,6 +14,8 @@ from nornir_napalm.plugins.tasks import napalm_get
 from nornir_scrapli.tasks import send_commands
 from scrapli.driver import GenericDriver
 
+from nornir_pygnmi.tasks import gnmi_get
+
 InventoryPluginRegister.register("inventory", AnsibleInventory)
 
 def nornir_connect_and_run_getters(task, plugin, action, params, platform, username, password):
@@ -47,11 +49,30 @@ def nornir_connect_and_run_commands(task, plugin, action, params, platform, user
   )
   task.host.close_connection(plugin)
 
+def nornir_connect_and_run_gnmi(task, plugin, action, params, platform, username, password):
+  task.host.open_connection(plugin, 
+                            configuration=task.nornir.config, 
+                            platform=platform,
+                            port=57400,
+                            username=username, 
+                            password=password,
+                            extras={
+                              "skip_verify": True,
+                              "debug": False,
+                            },
+                           )
+  r = task.run(
+    task=action,
+    path=params,
+    encoding='JSON_IETF'
+  )
+  task.host.close_connection(plugin)
 
 kinds_platforms = {
   'linux':    'generic', 
   'ceos':     'eos',
   'crpd':     'generic',
+  'srl':      'srlinux',
 #    'vr-veos':  'eos',
 #    'vr-vmx':   'junos', 
 #    'vr-xrv9k': 'iosxr',
@@ -61,24 +82,28 @@ kinds_credentials = {
   'linux':    {"username": "root", "password": "root"},
   'ceos':     {"username": "admin", "password": "admin"},
   'crpd':     {"username": "root", "password": "clab123"},
+  'srl':      {"username": "admin",  "password": "NokiaSrl1!"},
 }
 
 kinds_tasks = {
   'linux':     nornir_connect_and_run_commands,
   'ceos':      nornir_connect_and_run_getters,
   'crpd':      nornir_connect_and_run_commands,
+  'srl':       nornir_connect_and_run_gnmi,
 }
 
 kinds_plugins = {
   'linux':     "scrapli",
   'ceos':      "napalm",
   'crpd':      "scrapli",
+  'srl':       "pygnmi",
 }
 
 kinds_actions = {
   'linux':     send_commands,
   'ceos':      napalm_get,
   'crpd':      send_commands,
+  'srl':       gnmi_get,
 }
 
 kinds_params = {
@@ -107,6 +132,13 @@ kinds_params = {
     'os_version': "cat /proc/version",
     'uptime': "cat /proc/uptime",
     'interfaces': "ip -json address show",
+  },
+  'srl': {
+    'hostname':      "srl_nokia-system:system/srl_nokia-system-name:name/host-name",
+    'os_version':    "srl_nokia-system:system/srl_nokia-system-info:information/version",
+    'model':         "srl_nokia-platform:platform/srl_nokia-platform-chassis:chassis/type",
+    'serial_number': "srl_nokia-platform:platform/srl_nokia-platform-chassis:chassis/serial-number",
+    'last_booted':   "srl_nokia-system:system/srl_nokia-system-info:information/last-booted"
   },
 }
 
@@ -195,6 +227,28 @@ def parse_results_napalm(kind, result):
     
     return data
 
+def parse_results_gnmi_get(kind, result):
+    data = {"kind": kind}
+    params = list(kinds_params[kind].keys())
+    paths = list(kinds_params[kind].values())
+    # flatten multiple updates into one list
+    outputs = []
+    for n in result["notification"]:
+        for u in n["update"]:
+          outputs.append(u)
+    #print(outputs)
+    if len(params) != len(outputs):
+      data |= {"error": f"Number of commands and their outputs don't match"}
+      return data
+    collects = {}
+    for i in range(0, len(params)):
+      for o in outputs:
+        #print(o)
+        if o["path"] == paths[i]: # found an update matching current path in params
+            data |= {params[i]: o["val"]}
+    
+    return data
+
 def get_clab_node_data(root, topology, secrets=""):
   node_data = {
     "name": topology,
@@ -254,6 +308,9 @@ def get_clab_node_data(root, topology, secrets=""):
         n = {}
         if kinds_platforms[kind] == "generic":
           n |= parse_results_generic(kind, v[1].result)
+        elif kinds_platforms[kind] == "srlinux":
+          n |= parse_results_gnmi_get(kind, v[1].result)
+          n |= {'vendor': 'Nokia'}
         else:
           n |= parse_results_napalm(kind, v[1].result)
       else:
