@@ -318,6 +318,11 @@ def parse_results_gnmi_get(kind, result):
       else:
         data |= {'fqdn': data['hostname']}
 
+    if 'interfaces' in data.keys():
+        data |= {'interface_list': []}
+        for i in data['interfaces'].keys():
+            data['interface_list'].append(i)
+
     return data
 
 def get_clab_node_data(root, topology, secrets=""):
