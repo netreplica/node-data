@@ -139,8 +139,27 @@ kinds_params = {
     'os_version':    "srl_nokia-system:system/srl_nokia-system-info:information/version",
     'model':         "srl_nokia-platform:platform/srl_nokia-platform-chassis:chassis/type",
     'serial_number': "srl_nokia-platform:platform/srl_nokia-platform-chassis:chassis/serial-number",
-    'last_booted':   "srl_nokia-system:system/srl_nokia-system-info:information/last-booted"
+    'last_booted':   "srl_nokia-system:system/srl_nokia-system-info:information/last-booted",
+    #'interfaces':    "srl_nokia-interfaces:interface/ethernet/hw-mac-address",
+    'interfaces':    "srl_nokia-interfaces:interface",
   },
+}
+
+# keys to extract from the data returned by the device, with normalization mapping
+kinds_keys = {
+    'srl': {
+        'interfaces': {
+            'admin-state': 'admin-state',
+            'oper-state': 'oper-state',
+            'description': 'description',
+            'ethernet': {
+                'hw-mac-address': 'mac_address',
+                'port-speed': 'speed',
+            },
+            'mtu': 'mtu',
+            'last-change': 'last-change',
+        },
+    }
 }
 
 def pull_data(nrinit):
@@ -228,22 +247,71 @@ def parse_results_napalm(kind, result):
     
     return data
 
+def traverse_gnmi_update(update, lookup_map, extracted_data):
+    for key, val in lookup_map.items():
+        if key in update.keys():
+            if isinstance(val, dict):
+                extracted_data |= traverse_gnmi_update(update[key], lookup_map[key], extracted_data)
+            elif isinstance(val, str):
+                extracted_data |= {val: update[key]}
+    return extracted_data
+
 def parse_results_gnmi_get(kind, result):
     data = {"kind": kind}
     params = list(kinds_params[kind].keys())
     paths = list(kinds_params[kind].values())
     # flatten multiple updates into one list
-    outputs = []
+    updates = []
     if "notification" in result:
       for n in result["notification"]:
         if "update" in n.keys():
           for u in n["update"]:
-            outputs.append(u)
-    for i in range(0, len(params)):
-      for o in outputs:
-        if o["path"] == paths[i]: # found an update matching current path in params
-            data |= {params[i]: o["val"]}
-    
+            updates.append(u)
+
+    for u in updates:
+        if u["path"] != None and u["path"] in paths:
+            # an update with path matching a query path
+            i = paths.index(u["path"])
+            data |= {params[i]: u["val"]}
+        elif u["path"] == None:
+            for k in u["val"].keys():
+                # check if there is a query path with matching prefix
+                for p in paths:
+                    if p == k:
+                        # an update with path exactly matching a query path
+                        #print(k, p, u["val"][k])
+                        i = paths.index(p)
+                        kind_keys = kinds_keys[kind][params[i]]
+                        data |= {params[i]: {}}
+                        for v in u["val"][k]:
+                            data_block_key = ""
+                            data_block = {}
+                            if "name" in v.keys():
+                                data_block_key = v["name"]
+                            data_block |= traverse_gnmi_update(v, kind_keys, data_block)
+                            data[params[i]] |= {data_block_key: data_block}
+                    elif p.startswith(k):
+                        # extract path blocks to match values
+                        i = paths.index(p)
+                        print(k, p, params[i], u["val"][k])
+                        path_blocks = p[len(k):].split("/")
+                        path_blocks.insert(0, "name") # multiple entries will have different name key
+                        data |= {params[i]: {}}
+                        print(path_blocks)
+                        for v in u["val"][k]:
+                            data_block_key = ""
+                            data_block = {}
+                            for b in path_blocks:
+                                if b == "":
+                                    continue
+                                elif b in v.keys():
+                                    if b == "name":
+                                        data_block_key = v[b]
+                                    else:
+                                        data_block |= {b: v[b]}
+                                #print(data_block_key, data_block)
+                            data[params[i]] |= {data_block_key: data_block}
+
     if 'hostname' in data.keys():
       if 'domainname' in data.keys() and data['domainname'] != "":
         data |= {'fqdn': data['hostname'] + "." + data['domainname']}
