@@ -140,8 +140,8 @@ kinds_params = {
     'model':         "srl_nokia-platform:platform/srl_nokia-platform-chassis:chassis/type",
     'serial_number': "srl_nokia-platform:platform/srl_nokia-platform-chassis:chassis/serial-number",
     'last_booted':   "srl_nokia-system:system/srl_nokia-system-info:information/last-booted",
-    #'interfaces':    "srl_nokia-interfaces:interface/ethernet/hw-mac-address",
     'interfaces':    "srl_nokia-interfaces:interface",
+    'lldp_neighbors': "srl_nokia-system:system/srl_nokia-lldp:lldp/interface",
   },
 }
 
@@ -149,6 +149,7 @@ kinds_params = {
 kinds_keys = {
     'srl': {
         'interfaces': {
+            'name': '__key__',
             'admin-state': 'admin-state',
             'oper-state': 'oper-state',
             'description': 'description',
@@ -158,6 +159,17 @@ kinds_keys = {
             },
             'mtu': 'mtu',
             'last-change': 'last-change',
+        },
+        'lldp_neighbors': {
+            'interface': {
+                'name': '__key__',
+                'neighbor': [
+                    {
+                        'system-name' : 'hostname',
+                        'port-id': 'port',
+                    }
+                ],
+            },
         },
     }
 }
@@ -247,13 +259,40 @@ def parse_results_napalm(kind, result):
     
     return data
 
-def traverse_gnmi_update(update, lookup_map, extracted_data):
-    for key, val in lookup_map.items():
-        if key in update.keys():
-            if isinstance(val, dict):
-                extracted_data |= traverse_gnmi_update(update[key], lookup_map[key], extracted_data)
-            elif isinstance(val, str):
-                extracted_data |= {val: update[key]}
+def traverse_gnmi_update(update, lookup_map):
+    index_key, data, extracted_data = "", {}, {}
+    if isinstance(update, list):
+        # traverse each individial list item
+        if isinstance(lookup_map, list):
+            # return data as a list
+            for item in update:
+                data |= traverse_gnmi_update(item, lookup_map[0])
+            extracted_data = [data]
+        else:
+            # return data as a dict (make sure there is a __key__ in lookup_map to index that dict)
+            for item in update:
+                data |= traverse_gnmi_update(item, lookup_map)
+            extracted_data = data
+            
+    elif isinstance(update, dict):
+        for key, val in lookup_map.items():
+            if key in update.keys():
+                if isinstance(val, dict):
+                    data |= traverse_gnmi_update(update[key], val)
+                elif isinstance(val, list):
+                    # the data returned below will be a list, can't merge it
+                    # this assignment will override any other extracted values outside of the list
+                    data = traverse_gnmi_update(update[key], val)
+                elif isinstance(val, str):
+                    if val == "__key__":
+                        index_key = key
+                    else:
+                        data |= {val: update[key]}
+        if index_key != "":
+            extracted_data = {update[index_key]: data}
+        else:
+            extracted_data = data
+            
     return extracted_data
 
 def parse_results_gnmi_get(kind, result):
@@ -263,66 +302,44 @@ def parse_results_gnmi_get(kind, result):
     # flatten multiple updates into one list
     updates = []
     if "notification" in result:
-      for n in result["notification"]:
-        if "update" in n.keys():
-          for u in n["update"]:
-            updates.append(u)
-
+        for n in result["notification"]:
+            if "update" in n.keys():
+                for u in n["update"]:
+                  updates.append(u)
+    
     for u in updates:
         if u["path"] != None and u["path"] in paths:
-            # an update with path matching a query path
+            # an update with path exactly matching a query path
             i = paths.index(u["path"])
             data |= {params[i]: u["val"]}
+        elif u["path"] != None:
+            # check if there is prefix match for the query path
+            for p in paths:
+                if p.startswith(u["path"]):
+                    i = paths.index(p)
+                    data[params[i]] = traverse_gnmi_update(u["val"], kinds_keys[kind][params[i]])
         elif u["path"] == None:
             for k in u["val"].keys():
                 # check if there is a query path with matching prefix
                 for p in paths:
                     if p == k:
                         # an update with path exactly matching a query path
-                        #print(k, p, u["val"][k])
                         i = paths.index(p)
-                        kind_keys = kinds_keys[kind][params[i]]
                         data |= {params[i]: {}}
                         for v in u["val"][k]:
-                            data_block_key = ""
-                            data_block = {}
-                            if "name" in v.keys():
-                                data_block_key = v["name"]
-                            data_block |= traverse_gnmi_update(v, kind_keys, data_block)
-                            data[params[i]] |= {data_block_key: data_block}
-                    elif p.startswith(k):
-                        # extract path blocks to match values
-                        i = paths.index(p)
-                        print(k, p, params[i], u["val"][k])
-                        path_blocks = p[len(k):].split("/")
-                        path_blocks.insert(0, "name") # multiple entries will have different name key
-                        data |= {params[i]: {}}
-                        print(path_blocks)
-                        for v in u["val"][k]:
-                            data_block_key = ""
-                            data_block = {}
-                            for b in path_blocks:
-                                if b == "":
-                                    continue
-                                elif b in v.keys():
-                                    if b == "name":
-                                        data_block_key = v[b]
-                                    else:
-                                        data_block |= {b: v[b]}
-                                #print(data_block_key, data_block)
-                            data[params[i]] |= {data_block_key: data_block}
-
+                            data[params[i]] |= traverse_gnmi_update(v, kinds_keys[kind][params[i]])
+        
     if 'hostname' in data.keys():
-      if 'domainname' in data.keys() and data['domainname'] != "":
-        data |= {'fqdn': data['hostname'] + "." + data['domainname']}
-      else:
-        data |= {'fqdn': data['hostname']}
-
+        if 'domainname' in data.keys() and data['domainname'] != "":
+            data |= {'fqdn': data['hostname'] + "." + data['domainname']}
+        else:
+            data |= {'fqdn': data['hostname']}
+    
     if 'interfaces' in data.keys():
         data |= {'interface_list': []}
         for i in data['interfaces'].keys():
             data['interface_list'].append(i)
-
+    
     return data
 
 def get_clab_node_data(root, topology, secrets=""):
