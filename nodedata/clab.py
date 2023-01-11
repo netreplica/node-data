@@ -148,29 +148,60 @@ kinds_params = {
 # keys to extract from the data returned by the device, with normalization mapping
 kinds_keys = {
     'srl': {
-        'interfaces': {
-            'name': '__key__',
-            'admin-state': 'admin-state',
-            'oper-state': 'oper-state',
-            'description': 'description',
-            'ethernet': {
-                'hw-mac-address': 'mac_address',
-                'port-speed': 'speed',
+        'interfaces': [
+            {
+                '__key__': 'interfaces',
+                '__map__': {
+                    'name': '__key__',
+                    'admin-state': 'admin-state',
+                    'oper-state': 'oper-state',
+                    'description': 'description',
+                    'ethernet': {
+                        'hw-mac-address': 'mac_address',
+                        'port-speed': 'speed',
+                    },
+                    'mtu': 'mtu',
+                    'last-change': 'last-change',
+                },
             },
-            'mtu': 'mtu',
-            'last-change': 'last-change',
-        },
-        'lldp_neighbors': {
-            'interface': {
-                'name': '__key__',
-                'neighbor': [
-                    {
-                        'system-name' : 'hostname',
-                        'port-id': 'port',
-                    }
-                ],
+            {
+                '__key__': 'interfaces_ip',
+                '__map__': {
+                    'name': '__key__',
+                    'subinterface': {
+                        #'index': '__key__',
+                        'ipv4': {
+                            '__index__': 'ipv4',
+                            'address': {
+                                'ip-prefix': '__key__',
+                            },
+                        },
+                        'ipv6': {
+                            '__index__': 'ipv6',
+                            'address': {
+                                'ip-prefix': '__key__',
+                            },
+                        },
+                    },
+                },
             },
-        },
+        ],
+        'lldp_neighbors': [
+            {
+                '__key__': 'lldp_neighbors',
+                '__map__': {
+                    'interface': {
+                        'name': '__key__',
+                        'neighbor': [
+                            {
+                                'system-name' : 'hostname',
+                                'port-id': 'port',
+                            }
+                        ],
+                    },
+                },
+            },
+        ],
     }
 }
 
@@ -261,37 +292,53 @@ def parse_results_napalm(kind, result):
 
 def traverse_gnmi_update(update, lookup_map):
     index_key, data, extracted_data = "", {}, {}
-    if isinstance(update, list):
-        # traverse each individial list item
-        if isinstance(lookup_map, list):
-            # return data as a list
-            for item in update:
-                data |= traverse_gnmi_update(item, lookup_map[0])
-            extracted_data = [data]
+
+    if isinstance(lookup_map, list):
+        for m in lookup_map:
+            extracted_data |= traverse_gnmi_update(update, m)
+    else:
+        if '__key__' in lookup_map.keys():
+            # we're are at the top of the lookup_map
+            if lookup_map['__key__'] not in extracted_data.keys():
+                extracted_data |= {lookup_map['__key__']: {}}
+            extracted_data[lookup_map['__key__']] |= traverse_gnmi_update(update, lookup_map['__map__'])
         else:
-            # return data as a dict (make sure there is a __key__ in lookup_map to index that dict)
-            for item in update:
-                data |= traverse_gnmi_update(item, lookup_map)
-            extracted_data = data
-            
-    elif isinstance(update, dict):
-        for key, val in lookup_map.items():
-            if key in update.keys():
-                if isinstance(val, dict):
-                    data |= traverse_gnmi_update(update[key], val)
-                elif isinstance(val, list):
-                    # the data returned below will be a list, can't merge it
-                    # this assignment will override any other extracted values outside of the list
-                    data = traverse_gnmi_update(update[key], val)
-                elif isinstance(val, str):
-                    if val == "__key__":
-                        index_key = key
-                    else:
-                        data |= {val: update[key]}
-        if index_key != "":
-            extracted_data = {update[index_key]: data}
-        else:
-            extracted_data = data
+            if isinstance(update, list):
+                # traverse each individial list item
+                if isinstance(lookup_map, list):
+                    # return data as a list
+                    for item in update:
+                        data |= traverse_gnmi_update(item, lookup_map[0])
+                    extracted_data = [data]
+                else:
+                    # return data as a dict (make sure there is a __key__ in lookup_map to index that dict)
+                    for item in update:
+                        data |= traverse_gnmi_update(item, lookup_map)
+                    extracted_data = data
+
+            elif isinstance(update, dict):
+                for key, val in lookup_map.items():
+                    if key in update.keys():
+                        if isinstance(val, dict):
+                            # check if there is an index to keep
+                            if "__index__" in val.keys():
+                                d = {val["__index__"]: traverse_gnmi_update(update[key], val)}
+                            else:
+                                d = traverse_gnmi_update(update[key], val)
+                            data |= d
+                        elif isinstance(val, list):
+                            # the data returned below will be a list, can't merge it
+                            # this assignment will override any other extracted values outside of the list
+                            data = traverse_gnmi_update(update[key], val)
+                        elif isinstance(val, str):
+                            if val == "__key__":
+                                index_key = key
+                            else:
+                                data |= {val: update[key]}
+                if index_key != "":
+                    extracted_data = {update[index_key]: data}
+                else:
+                    extracted_data = data
             
     return extracted_data
 
@@ -317,17 +364,14 @@ def parse_results_gnmi_get(kind, result):
             for p in paths:
                 if p.startswith(u["path"]):
                     i = paths.index(p)
-                    data[params[i]] = traverse_gnmi_update(u["val"], kinds_keys[kind][params[i]])
+                    data |= traverse_gnmi_update(u["val"], kinds_keys[kind][params[i]])
         elif u["path"] == None:
             for k in u["val"].keys():
                 # check if there is a query path with matching prefix
                 for p in paths:
-                    if p == k:
-                        # an update with path exactly matching a query path
+                    if p.startswith(k):
                         i = paths.index(p)
-                        data |= {params[i]: {}}
-                        for v in u["val"][k]:
-                            data[params[i]] |= traverse_gnmi_update(v, kinds_keys[kind][params[i]])
+                        data |= traverse_gnmi_update(u["val"][k], kinds_keys[kind][params[i]])
         
     if 'hostname' in data.keys():
         if 'domainname' in data.keys() and data['domainname'] != "":

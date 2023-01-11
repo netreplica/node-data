@@ -77,6 +77,7 @@ CLABDIR=`pwd`
 docker run -d -t \
   -v "${CLABDIR}":/htdocs/lab \
   -v "${CLABDIR}/proxy.conf":/etc/lighttpd/conf.d/proxy.conf \
+  -v "${CLABDIR}/../graphite/app":/htdocs/graphite \
   -p 8080:80 \
   --name graphite \
   --network=clab \
