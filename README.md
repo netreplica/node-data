@@ -113,3 +113,19 @@ cd ~/netreplica/code/host-data-poc/node-data
 pip3 install -r requirements.txt -r requirements_jupyter.txt
 jupyter notebook --ip=0.0.0.0
 ```
+
+vscode-based jupyter - create venv
+```Shell
+cd ~/.venv
+python3.9 -m venv nr-host-data-jup39
+```
+
+Activate in vs code
+
+1. prompt > Python: Select Interpreter
+2. choose  ~/.venv/nr-host-data-jup39/bin/python
+
+```Shell
+source ~/.venv/nr-host-data-jup39/bin/activate
+pip3 install -r requirements.txt -r requirements_jupyter.txt
+```
