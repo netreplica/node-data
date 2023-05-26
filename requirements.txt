@@ -1,8 +1,9 @@
-Flask~=2.3.2
-nornir~=3.3.0
+Flask~=2.3
+nornir~=3.3
 nornir_ansible~=2022.7.30
-nornir_napalm~=0.4.0
-nornir_scrapli~=2022.7.30
-nornir_utils~=0.2.0
+nornir_napalm~=0.4
+nornir_scrapli~=2023.1.30
+nornir_utils~=0.2
 scrapli~=2023.1.30
-setuptools~=44.0.0
+setuptools~=67.8
+textfsm~=1.1.2
