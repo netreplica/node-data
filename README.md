@@ -53,6 +53,16 @@ cat > instance/secrets.json << EOF
 EOF
 ```
 
+Development addons
+
+```Shell
+cd ~/venv
+python3.9 -m venv host-data-poc39-dev
+source ~/venv/host-data-poc39-dev/bin/activate
+cd ~/netreplica/code/host-data-poc/node-data
+pip3 install -r requirements.txt -r requirements_dev.txt
+```
+
 Manual CLI run. Note: if no `<topology>` parameter is provided, `node-data` will use `<root>/default` folder to locate `ansible-inventory.yml` file.
 
 ```Shell
